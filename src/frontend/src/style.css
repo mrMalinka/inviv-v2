@@ -1,0 +1,74 @@
+@font-face {
+    font-family: "0xProto";
+    font-style: normal;
+    font-weight: 400;
+    src: local(""),
+    url("assets/fonts/0xProto-Regular.woff2") format("woff2");
+}
+
+html {
+    font-size: max(calc((2vw + 2vh)/2), 20px);
+}
+body {
+    margin: 0;
+}
+#app, main {
+    height: 100vh;
+    width: 100vw;
+
+    text-align: center;
+    font-family: '0xProto';
+    color: var(--font-normal);
+}
+main {
+    display: flex;
+    flex-direction: column;
+}
+
+:root {
+    --control-panel-bg: #121214;
+    --chat-box-bg: #1A1A1E;
+
+    --main-border-radius: 4px;
+    --default-margin: 8px;
+
+    --font-normal: #ece7eb;
+}
+
+#control-panel {
+    display: flex;
+    background: var(--control-panel-bg);
+    height: max(22.75%, 124px);
+}
+
+#chat-box {
+    display: flex;
+    flex-direction: column;
+    background: var(--chat-box-bg);
+    flex-grow: 1;
+}
+
+.msg {
+    margin: var(--default-margin);
+    width: fit-content;
+    height: fit-content;
+}
+.msg.sent-by-me {
+    align-self: flex-end;
+}
+.msg:not(.sent-by-me) {
+    align-self: flex-start;
+}
+
+
+#title-app-name {
+    font-size: 0.8rem;
+    color: color-mix(in srgb, var(--font-normal) 50%, transparent);
+
+    text-align: left;
+    margin: var(--default-margin);
+
+    justify-self: left;
+    height: fit-content;
+    flex-grow: 1;
+}
