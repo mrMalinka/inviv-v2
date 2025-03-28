@@ -1,13 +1,14 @@
 package main
 
 import (
+	"encoding/json"
 	"log"
 	"net/http"
 
 	"github.com/gorilla/websocket"
 )
 
-const port = ":12588"
+const port string = ":12588"
 
 func main() {
 	log.Println("Initializing inviv-v2 server")
@@ -24,8 +25,16 @@ var upgrader = websocket.Upgrader{
 	},
 }
 
+type User struct {
+	ID []byte
+}
+
+type Message struct {
+	Type string          `json:"type"`
+	Data json.RawMessage `json:"data"`
+}
+
 func wsHandler(w http.ResponseWriter, r *http.Request) {
-	// Upgrade HTTP connection to WebSocket
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		log.Println("Upgrade error:", err)
@@ -35,18 +44,20 @@ func wsHandler(w http.ResponseWriter, r *http.Request) {
 
 	log.Println("Client connected")
 
-	// Read messages from the client
 	for {
-		messageType, message, err := conn.ReadMessage()
+		var message Message
+		err := conn.ReadJSON(&message)
 		if err != nil {
 			log.Println("Read error:", err)
-			break
+			continue
 		}
 
-		log.Printf("Received: %s", message)
+		switch message.Type {
+		case "msg":
+			log.Println("received msg")
+		}
 
-		// Echo the message back to the client
-		err = conn.WriteMessage(messageType, message)
+		err = conn.WriteJSON("b")
 		if err != nil {
 			log.Println("Write error:", err)
 			break

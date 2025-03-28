@@ -1,6 +1,7 @@
 <script>
 // @ts-nocheck
-  //import {HandleError} from '../wailsjs/go/main/App.js'
+  import {Connect, SendMessage} from '../wailsjs/go/main/App.js';
+  import * as runtime from '../wailsjs/runtime/runtime.js'; 
 
   window.displayError = (msg) => {
     console.log(msg)
@@ -17,8 +18,17 @@
   messages[0] = new Message("x123", "hello bigga", false)
   messages[1] = new Message("balls", "hello ziga", true)
 
+  function receiveMessage(sender, contents) {
+    console.log(sender)
+    console.log(contents)
+    messages = [...messages, new Message(sender, contents, false)]
+  }
+  runtime.EventsOn("msg", receiveMessage)
+
   var inputs = {} 
+  inputs.msgMain = ""
   inputs.ipDomainInput = ""
+  inputs.newGCWhenConnecting = true
 </script>
 
 <main>
@@ -26,9 +36,12 @@
     <div id="domain-panel">
       <div>
         server ip / domain
-        <input id="domain-input" bind:value={inputs.ipDomainInput}>
+        <input id="domain-input" bind:value={inputs.ipDomainInput} >
+        <button on:click={() => inputs.newGCWhenConnecting = !inputs.newGCWhenConnecting}>
+          {inputs.newGCWhenConnecting ? "make new" : "join"}
+        </button>
       </div>
-      <button>
+      <button on:click={() => Connect(inputs.ipDomainInput, inputs.newGCWhenConnecting)}>
         &gt;
       </button>
     </div>
@@ -49,6 +62,8 @@
       </div>
     {/if}
   {/each}
+  <input bind:value={inputs.msgMain}>
+  <button on:click={() => SendMessage(inputs.msgMain)}>send</button>
        
 
   <!--<div id="title-app-name">inviv v2</div>-->

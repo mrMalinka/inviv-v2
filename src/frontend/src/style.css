@@ -66,6 +66,9 @@ main {
     width: 100%;
     margin: 20px;
 }
+#domain-panel div button {
+    width: 100%;
+}
 #domain-panel button {
     width: 15%;
 }
