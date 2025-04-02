@@ -1,0 +1,21 @@
+html {
+    background-color: rgb(18, 63, 131);
+    text-align: center;
+    color: white;
+    font-family: "Cousine";
+}
+body {
+    margin: 0;
+}
+
+@font-face {
+    font-family: "Cousine";
+    font-style: normal;
+    font-weight: 400;
+    src: local(""),
+    url("assets/fonts/Cousine-Regular.ttf") format("truetype");
+}
+
+#app {
+    height: 100vh;
+}
