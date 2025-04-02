@@ -16,7 +16,7 @@
         joinedGroupKey = key
     })
 
-    let messages: Message[] = []
+    let messages: Message[] = [new Message("sasdkjiasdjioasdijasdkosdao", "hello world", false)]
     EventsOn("new-message", (sender: string, contents: string, byMe: boolean) => {
         messages = [...messages, new Message(sender, contents, byMe)]
     })
@@ -34,19 +34,23 @@
 
 <main>
     <div id="control-panel">
-        <input bind:value={inputs.groupKey} />
-        <button on:click={() => inputs.makeNew = !inputs.makeNew}>
-            {inputs.makeNew ? "new" : "join"}
-        </button>
-        <button on:click={() => Connect(inputs.makeNew, inputs.groupKey)}>
-            connect
-        </button>
+        <div id="join-section">
+            <input bind:value={inputs.groupKey} />
+            <button on:click={() => inputs.makeNew = !inputs.makeNew}>
+                {inputs.makeNew ? "new" : "join"}
+            </button>
+            <button on:click={() => Connect(inputs.makeNew, inputs.groupKey)}>
+                connect
+            </button>
+            {joinedGroupKey}
+        </div>
     </div>
 
-    {joinedGroupKey}
-    {#each messages as msg}
-        <p class:byme={msg.byMe}>{msg.sender}: {msg.contents}</p>
-    {/each}
+    <div id="message-box">
+        {#each messages as msg}
+            <p class:byme={msg.byMe}>{msg.sender}: {msg.contents}</p>
+        {/each}
+    </div>
     <input bind:value={inputs.message} />
     <button on:click={() => SendTextMessage(inputs.message)}>
         send

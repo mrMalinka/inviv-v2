@@ -19,3 +19,38 @@ body {
 #app {
     height: 100vh;
 }
+main {
+    display: flex;
+    flex-direction: column;
+    height: inherit;
+}
+
+
+:root {
+    --bg-control-panel: #3C3836;
+    --bg-join-panel: #46413f;
+
+    --bg-message-box: #282828;
+}
+
+#control-panel {
+    background-color: var(--bg-control-panel);
+    height: 27%;
+
+    display: flex;
+}
+#join-section {
+    background-color: var(--bg-join-panel);
+
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+
+    margin: 10px;
+    padding: 10px;
+}
+
+#message-box {
+    background-color: var(--bg-message-box);
+    height: 73%;
+}
