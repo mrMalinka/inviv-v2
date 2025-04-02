@@ -9,7 +9,6 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -343,37 +342,6 @@ func UUIDToString(uuid UUID) string {
 		uuid[8:10],
 		uuid[10:],
 	)
-}
-
-func stringToUUID(s string) (UUID, error) {
-	hexStr := ""
-	for _, c := range s {
-		if c != '-' {
-			hexStr += string(c)
-		}
-	}
-
-	if len(hexStr) != 32 {
-		return UUID{}, fmt.Errorf("invalid UUID length")
-	}
-
-	decoded, err := hex.DecodeString(hexStr)
-	if err != nil {
-		return UUID{}, err
-	}
-
-	// Validate version and variant
-	if decoded[6]&0xf0 != 0x40 {
-		return UUID{}, fmt.Errorf("invalid UUID version")
-	}
-	if decoded[8]&0xc0 != 0x80 {
-		return UUID{}, fmt.Errorf("invalid UUID variant")
-	}
-
-	// Convert slice to UUID ([16]byte)
-	var uuid UUID
-	copy(uuid[:], decoded)
-	return uuid, nil
 }
 
 // wails boilerplate
