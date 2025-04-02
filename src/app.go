@@ -199,7 +199,6 @@ func receiver(ctx context.Context) {
 				string(plaintext),
 				false,
 			)
-			fmt.Printf("Received ciphertext (hex): %x\n", messageText.Contents)
 		}
 	}
 }
@@ -224,7 +223,6 @@ func (a *App) SendTextMessage(contents string) {
 	}
 
 	runtime.EventsEmit(a.ctx, "new-message", "you", contents, true)
-	fmt.Printf("Sent ciphertext (hex): %x\n", ciphertext)
 }
 
 func makeMessage(msg any, typ uint8) Message {

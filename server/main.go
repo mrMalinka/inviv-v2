@@ -13,6 +13,8 @@ import (
 	"sync"
 	"time"
 
+	"slices"
+
 	ecies "github.com/ecies/go/v2"
 	"github.com/gorilla/websocket"
 )
@@ -30,6 +32,8 @@ type Member struct {
 
 	Shortterm       *ecdh.PublicKey
 	ShorttermUpdate chan *ecdh.PublicKey
+
+	RekeyTracker bool
 }
 
 type Group struct {
@@ -46,7 +50,6 @@ var (
 // inviting system
 // -----
 
-// group password lock, one time use
 func authGroup(key UUID) *Group {
 	groupsMu.Lock()
 	defer groupsMu.Unlock()
@@ -59,7 +62,7 @@ func authGroup(key UUID) *Group {
 }
 
 // generates, switches, encrypts and sends to all members a new invite key for the group
-func (g *Group) rotateGroupKey() {
+func (g *Group) RotateGroupKey() {
 	new := generateUUID()
 	g.Key = new
 
@@ -69,8 +72,9 @@ func (g *Group) rotateGroupKey() {
 			new[:],
 		)
 		if err != nil {
-			// TODO: add wipe user function for when their data is invalid and we need to send a drone strike to their home
 			log.Println("Invite key encryption error:", err)
+			// nuke the member because of their bad key
+			member.Nuke()
 			continue
 		}
 
@@ -81,6 +85,53 @@ func (g *Group) rotateGroupKey() {
 			message, MSG_NewGroupKey,
 		))
 	}
+}
+
+func (m *Member) Nuke() {
+	defer m.Conn.WriteControl(websocket.CloseNormalClosure, nil, <-time.After(1*time.Second))
+
+	var myGroup *Group
+	// find the group this member is in
+	for _, group := range groups {
+		for _, member := range group.Members {
+			if bytes.Equal(member.Name[:], m.Name[:]) {
+				myGroup = group
+				break
+			}
+		}
+		if myGroup != nil {
+			break
+		}
+	}
+
+	if myGroup == nil {
+		log.Println("A user was found with no group!")
+		return
+	}
+
+	myGroup.Members = func() []*Member {
+		for i, member := range myGroup.Members {
+			if member.Name == m.Name {
+				return slices.Delete(myGroup.Members, i, i+1)
+			}
+		}
+		return myGroup.Members
+	}()
+
+	// nuke the group
+	if len(myGroup.Members) == 0 {
+		groups = func() []*Group {
+			for i, group := range groups {
+				if group == myGroup {
+					return slices.Delete(groups, i, i+1)
+				}
+			}
+			return groups
+		}()
+	}
+
+	// assign a new rekey tracker
+	myGroup.Members[0].RekeyTracker = true
 }
 
 // -----
@@ -97,30 +148,34 @@ func packetForMember(m *Member, list []*ecdh.PublicKey) []string {
 
 	return newList
 }
-func (g *Group) doRekey() {
+func (g *Group) DoRekey() {
 	time.Sleep(1 * time.Millisecond)
 	var wg sync.WaitGroup
+
 	for _, member := range g.Members {
-		// ask for everyone to generate a new key
 		notif := Message{
 			Type: MSG_MakeNewKey,
 		}
-
 		err := member.Conn.WriteJSON(notif)
 		if err != nil {
-			// TODO: nuke this individual
 			log.Println("Error asking user to make a new key:", err)
+			member.Nuke()
 			continue
 		}
 
-		go func() {
-			defer wg.Done()
-			member.Shortterm = <-member.ShorttermUpdate
-		}()
 		wg.Add(1)
+		go func(m *Member) {
+			defer wg.Done()
+			select {
+			case newKey := <-m.ShorttermUpdate:
+				m.Shortterm = newKey
+			case <-time.After(3 * time.Second):
+				log.Println("Member timed out during rekey!")
+				m.Nuke()
+			}
+		}(member)
 	}
 
-	// TODO: add timeout, fix potential race conditions
 	wg.Wait()
 
 	var list []*ecdh.PublicKey
@@ -132,7 +187,6 @@ func (g *Group) doRekey() {
 		packet := MessageNewPeerKeys{
 			packetForMember(member, list),
 		}
-
 		member.Conn.WriteJSON(makeMessage(packet, MSG_NewPeerKeys))
 	}
 }
@@ -265,38 +319,23 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 		myLongterm,
 		nil, // this should be filled out in a second anyways
 		make(chan *ecdh.PublicKey),
+		new, // if making a new chat, i am automatically the tracker
 	}
 	myGroup.Members = append(myGroup.Members, me)
 
-	defer func() {
-		fmt.Println("Clearing user!")
-		myGroup.Members = func() []*Member {
-			for i, member := range myGroup.Members {
-				if member.Name == myUUID {
-					return append(myGroup.Members[:i], myGroup.Members[i+1:]...)
-				}
-			}
-			return myGroup.Members
-		}()
+	defer me.Nuke()
 
-		if len(myGroup.Members) == 0 {
-			groups = func() []*Group {
-				for i, group := range groups {
-					if group == myGroup {
-						return append(groups[:i], groups[i+1:]...)
-					}
-				}
-				return groups
-			}()
-		}
-	}()
+	myGroup.RotateGroupKey()
 
-	myGroup.rotateGroupKey()
+	go myGroup.DoRekey()
 
-	println("connection success!!!")
-	go myGroup.doRekey()
-
+	var counter int
 	for {
+		if counter > 10 && me.RekeyTracker {
+			println("rekeying")
+			myGroup.DoRekey()
+		}
+
 		var msg Message
 		err := conn.ReadJSON(&msg)
 		if err != nil {
@@ -341,6 +380,8 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 					)) // forward directly
 				}
 			}
+
+			counter++
 		}
 	}
 }
