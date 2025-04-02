@@ -131,7 +131,9 @@ func (m *Member) Nuke() {
 	}
 
 	// assign a new rekey tracker
-	myGroup.Members[0].RekeyTracker = true
+	if myGroup != nil {
+		myGroup.Members[0].RekeyTracker = true
+	}
 }
 
 // -----
