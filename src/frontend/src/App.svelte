@@ -1,6 +1,6 @@
 <script lang="ts">
-    import {Connect, SendTextMessage} from "../wailsjs/go/main/App"
-    import {EventsOn} from "../wailsjs/runtime/runtime"
+    import { Connect, SendTextMessage } from "../wailsjs/go/main/App"
+    import { EventsOn } from "../wailsjs/runtime/runtime"
 
     class Message {
         constructor(
@@ -16,7 +16,7 @@
         joinedGroupKey = key
     })
 
-    let messages: Message[] = [new Message("sasdkjiasdjioasdijasdkosdao", "hello world", false)]
+    let messages: Message[] = []
     EventsOn("new-message", (sender: string, contents: string, byMe: boolean) => {
         messages = [...messages, new Message(sender, contents, byMe)]
     })
@@ -25,34 +25,58 @@
         groupKey: string
         makeNew: boolean
         message: string
+        domain: string
     } = {
+        domain: "",
         groupKey: "",
         makeNew: false,
         message: "",
     }
+
+    let connected = false
+    EventsOn("connection-change", (conn: boolean) => {
+        connected = conn
+    })
+
+    async function copyToClipboard(text) {
+        try {
+            await navigator.clipboard.writeText(text);
+        } catch (err) {
+            console.error('Failed to copy:', err);
+        }
+    }
 </script>
 
 <main>
-    <div id="control-panel">
-        <div id="join-section">
-            <input bind:value={inputs.groupKey} />
-            <button on:click={() => inputs.makeNew = !inputs.makeNew}>
-                {inputs.makeNew ? "new" : "join"}
-            </button>
-            <button on:click={() => Connect(inputs.makeNew, inputs.groupKey)}>
-                connect
-            </button>
-            {joinedGroupKey}
+    {#if connected}
+    <div id="status-bar">
+        <div class="field">
+            <button on:click={() => copyToClipboard(joinedGroupKey)}>group key:</button>
+            <input disabled style="filter: none;" bind:value={joinedGroupKey}>
         </div>
     </div>
+    {:else}
+    <div id="connect-page">
+        <div class="field">
+            <div>server</div>
+            <input bind:value={inputs.domain}>
+        </div>
 
-    <div id="message-box">
-        {#each messages as msg}
-            <p class:byme={msg.byMe}>{msg.sender}: {msg.contents}</p>
-        {/each}
+        <div class="field">
+            <button
+                style={inputs.makeNew ? "filter: blur(1px);" : ""}
+                on:click={() => {
+                    inputs.makeNew = !inputs.makeNew
+                    inputs.groupKey = ""
+                }}
+            >key</button>
+
+            <input disabled={inputs.makeNew} bind:value={inputs.groupKey}>
+        </div>
+
+        <button id="connect-button" on:click={() => {
+            Connect(inputs.domain, inputs.makeNew, inputs.groupKey)
+        }}>connect</button>
     </div>
-    <input bind:value={inputs.message} />
-    <button on:click={() => SendTextMessage(inputs.message)}>
-        send
-    </button>
+    {/if}
 </main>

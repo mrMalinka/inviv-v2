@@ -16,6 +16,7 @@ import (
 	"log"
 	"net/http"
 	"sort"
+	"strings"
 	"time"
 
 	ecies "github.com/ecies/go/v2"
@@ -34,6 +35,8 @@ var (
 
 	Conn *websocket.Conn
 )
+
+const port = ":14194"
 
 const (
 	MSG_NewGroupKey uint8 = iota + 1
@@ -74,7 +77,7 @@ type MessageNewKeyRequestResponse struct {
 // connection
 // -----
 
-func (a *App) Connect(makeNew bool, keyStr string) {
+func (a *App) Connect(host string, makeNew bool, keyStr string) {
 	if LongtermPriv == nil || LongtermPub == nil {
 		var err error
 		LongtermPriv, err = ecies.GenerateKey()
@@ -99,7 +102,7 @@ func (a *App) Connect(makeNew bool, keyStr string) {
 	header.Add("longterm", LongtermPub.Hex(false))
 
 	conn, resp, err := dialer.Dial(
-		"ws://localhost:14194/ws",
+		domainPath(host),
 		header,
 	)
 	if err != nil {
@@ -112,6 +115,8 @@ func (a *App) Connect(makeNew bool, keyStr string) {
 
 	Conn = conn
 	go receiver(a.ctx)
+
+	runtime.EventsEmit(a.ctx, "connection-change", true)
 }
 
 // main receive function
@@ -121,6 +126,7 @@ func receiver(ctx context.Context) {
 		err := Conn.ReadJSON(&message)
 		if err != nil {
 			log.Printf("Failed to read from WS: '%v'\n", err)
+			runtime.EventsEmit(ctx, "connection-change", false)
 			return
 		}
 
@@ -342,6 +348,14 @@ func UUIDToString(uuid UUID) string {
 		uuid[8:10],
 		uuid[10:],
 	)
+}
+
+func domainPath(domain string) string {
+	if strings.Contains(domain, ":") {
+		return fmt.Sprintf("ws://%s/ws", domain)
+	}
+
+	return fmt.Sprintf("ws://%s%s/ws", domain, port)
 }
 
 // wails boilerplate
