@@ -10,19 +10,24 @@
         ) {}
     }
 
-    // TODO: fix names, structure this a lil
     let joinedGroupKey: string = ""
     EventsOn("key-update", (key: string) => {
         joinedGroupKey = key
     })
 
-    let messages: Message[] = [
-        new Message("498577a3-e35c-45a3-8aef-07e62468b7c9", "hello world", false),
-        new Message("498577a3-e35c-45a3-8aef-07e62468b7c9", "asdjidsaijsdajidass huisdfahuiasdf asdfhu8fasdhuafsd asfdhu8ifasdhuiasdfhui asasdfhuiasdfhiu", true)
-    ]
+    let messages: Message[] = []
+    let messageLadder: HTMLDivElement;
     EventsOn("new-message", (sender: string, contents: string, byMe: boolean) => {
-        messages = [...messages, new Message(sender, contents, byMe)]
-    })
+        const shouldScroll = messageLadder.scrollTop + messageLadder.clientHeight >= messageLadder.scrollHeight - 10;
+
+        messages = [...messages, new Message(sender, contents, byMe)];
+
+        setTimeout(() => {
+            if (shouldScroll) {
+                messageLadder.scrollTop = messageLadder.scrollHeight;
+            }
+        }, 0);
+    });
 
     let inputs: {
         groupKey: string
@@ -36,7 +41,7 @@
         message: "",
     }
 
-    let connected = true
+    let connected = false
     EventsOn("connection-change", (conn: boolean) => {
         connected = conn
     })
@@ -48,7 +53,13 @@
             console.error('Failed to copy:', err);
         }
     }
-    joinedGroupKey = "44c3fbd4-b861-4a81-9101-ed129a5ffd87"
+
+    function inputKeydown(event) {
+        if (event.key == "Enter") {
+            SendTextMessage(inputs.message)
+            inputs.message = ""
+        }
+    }
 </script>
 
 <main>
@@ -62,7 +73,7 @@
             </div>
         </div>
 
-        <div id="message-ladder">
+        <div id="message-ladder" bind:this={messageLadder}>
             {#each messages as msg}
                 <div class="ladder-step">
                     <div class={msg.byMe ? "message byme" : "message"}>
@@ -77,6 +88,8 @@
                 </div>
             {/each}
         </div>
+
+        <input bind:value={inputs.message} id="input-main" on:keydown={inputKeydown}>
     </div>
 
     {:else}
