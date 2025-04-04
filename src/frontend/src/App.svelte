@@ -16,7 +16,10 @@
         joinedGroupKey = key
     })
 
-    let messages: Message[] = []
+    let messages: Message[] = [
+        new Message("498577a3-e35c-45a3-8aef-07e62468b7c9", "hello world", false),
+        new Message("498577a3-e35c-45a3-8aef-07e62468b7c9", "asdjidsaijsdajidass huisdfahuiasdf asdfhu8fasdhuafsd asfdhu8ifasdhuiasdfhui asasdfhuiasdfhiu", true)
+    ]
     EventsOn("new-message", (sender: string, contents: string, byMe: boolean) => {
         messages = [...messages, new Message(sender, contents, byMe)]
     })
@@ -33,7 +36,7 @@
         message: "",
     }
 
-    let connected = false
+    let connected = true
     EventsOn("connection-change", (conn: boolean) => {
         connected = conn
     })
@@ -45,17 +48,39 @@
             console.error('Failed to copy:', err);
         }
     }
+    joinedGroupKey = "44c3fbd4-b861-4a81-9101-ed129a5ffd87"
 </script>
 
 <main>
     {#if connected}
-    <div id="status-bar">
-        <div class="field">
-            <button on:click={() => copyToClipboard(joinedGroupKey)}>group key:</button>
-            <input disabled style="filter: none;" bind:value={joinedGroupKey}>
+    
+    <div id="main-ui">
+        <div id="status-bar">
+            <div class="field">
+                <button on:click={() => copyToClipboard(joinedGroupKey)}>group key:</button>
+                <input disabled style="filter: none;" bind:value={joinedGroupKey}>
+            </div>
+        </div>
+
+        <div id="message-ladder">
+            {#each messages as msg}
+                <div class="ladder-step">
+                    <div class={msg.byMe ? "message byme" : "message"}>
+                        <div class="message-top">
+                            {msg.byMe ? "you" : msg.sender}
+                        </div>
+
+                        <div class="message-contents">
+                            {msg.contents}
+                        </div>
+                    </div> 
+                </div>
+            {/each}
         </div>
     </div>
+
     {:else}
+
     <div id="connect-page">
         <div class="field">
             <div>server</div>
@@ -78,5 +103,6 @@
             Connect(inputs.domain, inputs.makeNew, inputs.groupKey)
         }}>connect</button>
     </div>
+
     {/if}
 </main>

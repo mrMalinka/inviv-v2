@@ -13,6 +13,10 @@ body {
     box-sizing: border-box;
     font-family: "Cousine";
     color: var(--font-color);
+
+    text-align: center;
+    text-justify: center;
+    font-size: 16px;
 }
 
 @font-face {
@@ -39,7 +43,6 @@ main {
     --bg-main: #1d2021;
     --bg-control-panel: #3c3836; /* gruvbox dark gray */
     --bg-element: #2b2827;
-    --bg-message-box: #282828; /* gruvbox darker gray */
     --bg-input: #504945; /* gruvbox medium dark */
 
     --accent-yellow: #fabd2f; /* gruvbox yellow */
@@ -48,6 +51,58 @@ main {
 
     --font-color: #ebdbb2;
     --main-radius: 10px;
+}
+
+
+#main-ui {
+    width: inherit;
+    height: inherit;
+
+    display: grid;
+    grid-template-rows: 60px 1fr 60px;
+}
+#status-bar {
+    display: flex;
+    background-color: var(--bg-control-panel);
+}
+#status-bar .field {
+    width: 40%;
+    min-width: 450px;
+}
+
+#message-ladder {
+    display: flex;
+    flex-direction: column;
+    overflow: scroll;
+}
+.ladder-step {
+    margin: 5px;
+    min-height: 12%;
+
+    display: flex;
+    align-items: center;
+}
+.ladder-step:has(.byme) {
+    justify-content: flex-end;
+}
+.message {
+    min-width: 40%;
+    max-width: 60%;
+    margin: 10px;
+}
+.message-top {
+    padding: 6px;
+    border-radius: var(--main-radius) var(--main-radius) 0 0;
+
+    background-color: var(--bg-element);
+}
+.message-contents {
+    padding: 6px;
+    background-color: var(--bg-control-panel);
+    border-radius: 0 0 var(--main-radius) var(--main-radius);
+
+    word-wrap: break-word;
+    white-space: normal;
 }
 
 
