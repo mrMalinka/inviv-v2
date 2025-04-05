@@ -134,6 +134,12 @@ func (m *Member) Nuke() {
 	if len(myGroup.Members) != 0 {
 		myGroup.Members[0].RekeyTracker = true
 	}
+
+	m.Conn.WriteControl(
+		websocket.CloseMessage,
+		websocket.FormatCloseMessage(websocket.CloseNoStatusReceived, "nuked"),
+		time.Now().Add(time.Second),
+	)
 }
 
 // -----
@@ -154,10 +160,11 @@ func (g *Group) DoRekey() {
 	time.Sleep(1 * time.Millisecond)
 	var wg sync.WaitGroup
 
-	for _, member := range g.Members {
+	for i, member := range g.Members {
 		notif := Message{
 			Type: MSG_MakeNewKey,
 		}
+
 		err := member.Conn.WriteJSON(notif)
 		if err != nil {
 			log.Println("Error asking user to make a new key:", err)
@@ -172,7 +179,7 @@ func (g *Group) DoRekey() {
 			case newKey := <-m.ShorttermUpdate:
 				m.Shortterm = newKey
 			case <-time.After(3 * time.Second):
-				log.Println("Member timed out during rekey!")
+				log.Printf("Member %v timed out during rekey!", i)
 				m.Nuke()
 			}
 		}(member)
@@ -335,7 +342,7 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	for {
 		if counter > 10 && me.RekeyTracker {
 			println("rekeying")
-			myGroup.DoRekey()
+			go myGroup.DoRekey()
 		}
 
 		var msg Message

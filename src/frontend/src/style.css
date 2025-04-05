@@ -76,31 +76,15 @@ main {
     overflow-y: scroll;
     overflow-x: none;
 }
-#message-ladder::-webkit-scrollbar {
-    width: 10px;
-}
-#message-ladder::-webkit-scrollbar-track {
-    background: var(--bg-control-panel);
-    border-radius: var(--main-radius);
-}
-#message-ladder::-webkit-scrollbar-thumb {
-    background-color: var(--bg-element);
-    border-radius: var(--main-radius);
-    border: 2px solid var(--bg-control-panel);
-}
-#message-ladder::-webkit-scrollbar-thumb:hover {
-    background-color: var(--accent-green);
-}
-#message-ladder::-webkit-scrollbar-corner {
-    background-color: var(--bg-control-panel);
-}
+
 
 
 .ladder-step {
     margin: 5px;
-    height: 70px;
+    min-height: 70px;
 
     display: flex;
+    overflow-y:visible;
     align-items: center;
 }
 .ladder-step:has(.byme) {
@@ -109,6 +93,7 @@ main {
 .message {
     width: 45%;
     margin: 10px;
+    max-height: 100%;
 }
 .message-top {
     padding: 6px;
@@ -121,8 +106,8 @@ main {
     background-color: var(--bg-control-panel);
     border-radius: 0 0 var(--main-radius) var(--main-radius);
 
-    word-wrap: break-word;
-    white-space: normal;
+    max-height: 22vh;
+    overflow-y: scroll;
 }
 
 #input-main {
@@ -202,6 +187,24 @@ main {
     filter: blur(5px);
 }
 
+*::-webkit-scrollbar {
+    width: 10px;
+}
+*::-webkit-scrollbar-track {
+    background: var(--bg-control-panel);
+    border-radius: var(--main-radius);
+}
+*::-webkit-scrollbar-thumb {
+    background-color: var(--bg-element);
+    border-radius: var(--main-radius);
+    border: 2px solid var(--bg-control-panel);
+}
+*::-webkit-scrollbar-thumb:hover {
+    background-color: var(--accent-green);
+}
+*::-webkit-scrollbar-corner {
+    background-color: var(--bg-control-panel);
+}
 button:hover {
     filter: brightness(1.2);
 }
