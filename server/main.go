@@ -39,6 +39,7 @@ type Member struct {
 type Group struct {
 	Key     UUID
 	Members []*Member
+	Counter uint8
 }
 
 var (
@@ -88,7 +89,11 @@ func (g *Group) RotateGroupKey() {
 }
 
 func (m *Member) Nuke() {
-	defer m.Conn.WriteControl(websocket.CloseNormalClosure, nil, <-time.After(1*time.Second))
+	defer m.Conn.WriteControl(
+		websocket.CloseMessage,
+		websocket.FormatCloseMessage(websocket.CloseNoStatusReceived, "nuked"),
+		time.Now().Add(5*time.Second),
+	)
 
 	var myGroup *Group
 	// find the group this member is in
@@ -134,12 +139,6 @@ func (m *Member) Nuke() {
 	if len(myGroup.Members) != 0 {
 		myGroup.Members[0].RekeyTracker = true
 	}
-
-	m.Conn.WriteControl(
-		websocket.CloseMessage,
-		websocket.FormatCloseMessage(websocket.CloseNoStatusReceived, "nuked"),
-		time.Now().Add(time.Second),
-	)
 }
 
 // -----
@@ -282,6 +281,7 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 		newGroup := Group{
 			Key:     key,
 			Members: make([]*Member, 0),
+			Counter: 0,
 		}
 		groups = append(groups, &newGroup)
 	} else {
@@ -338,17 +338,27 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 
 	go myGroup.DoRekey()
 
-	var counter int
-	for {
-		if counter > 10 && me.RekeyTracker {
-			println("rekeying")
-			go myGroup.DoRekey()
+	go func() {
+		for {
+			if me == nil {
+				break
+			}
+			if myGroup.Counter > 8 && me.RekeyTracker {
+				println("rekeying")
+				go myGroup.DoRekey()
+				myGroup.Counter = 0
+			}
+			time.Sleep(8 * time.Second)
 		}
+	}()
+
+	for {
 
 		var msg Message
 		err := conn.ReadJSON(&msg)
 		if err != nil {
 			log.Println("Error reading from WS:", err)
+			me = nil
 			return
 		}
 
@@ -390,7 +400,7 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 
-			counter++
+			myGroup.Counter++
 		}
 	}
 }

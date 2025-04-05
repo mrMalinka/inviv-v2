@@ -194,7 +194,8 @@ func receiver(ctx context.Context) {
 			SharedKey = sha256.Sum256(SharedKey[:]) // ratchet forward
 			plaintext, err := decrypt(messageText.Contents, SharedKey[:])
 			if err != nil {
-				log.Fatalln("Error decrypting message:", err)
+				log.Println("Error decrypting message:", err)
+				continue
 			}
 
 			runtime.EventsEmit(

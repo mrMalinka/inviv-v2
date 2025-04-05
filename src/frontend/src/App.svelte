@@ -44,6 +44,7 @@
     let connected = false
     EventsOn("connection-change", (conn: boolean) => {
         connected = conn
+        messages = []
     })
 
     async function copyToClipboard(text) {
