@@ -19,9 +19,7 @@
     let messageLadder: HTMLDivElement;
     EventsOn("new-message", (sender: string, contents: string, byMe: boolean) => {
         const shouldScroll = messageLadder.scrollTop + messageLadder.clientHeight >= messageLadder.scrollHeight - 10;
-
         messages = [...messages, new Message(sender, contents, byMe)];
-
         setTimeout(() => {
             if (shouldScroll) {
                 messageLadder.scrollTop = messageLadder.scrollHeight;
@@ -29,16 +27,11 @@
         }, 0);
     });
 
-    let inputs: {
-        groupKey: string
-        makeNew: boolean
-        message: string
-        domain: string
-    } = {
-        domain: "",
+    let inputs = {
         groupKey: "",
         makeNew: false,
         message: "",
+        domain: "",
     }
 
     let connected = false
@@ -47,7 +40,7 @@
         messages = []
     })
 
-    async function copyToClipboard(text) {
+    async function copyToClipboard(text: string) {
         try {
             await navigator.clipboard.writeText(text);
         } catch (err) {
@@ -56,7 +49,7 @@
     }
 
     function inputKeydown(event) {
-        if (event.key == "Enter") {
+        if (event.key === "Enter") {
             SendTextMessage(inputs.message)
             inputs.message = ""
         }
@@ -65,57 +58,62 @@
 
 <main>
     {#if connected}
-    
-    <div id="main-ui">
-        <div id="status-bar">
-            <div class="field">
-                <button on:click={() => copyToClipboard(joinedGroupKey)}>group key:</button>
-                <input disabled style="filter: none;" bind:value={joinedGroupKey}>
-            </div>
+    <div class="chat-container">
+        <div class="top-bar">
+            <input class="readonly-input" disabled={true} bind:value={joinedGroupKey}>
+            <button class="copy-btn" on:click={() => copyToClipboard(joinedGroupKey)} aria-label="copy group key">
+                <svg viewBox="0 0 24 24" class="copy-icon" xmlns="http://www.w3.org/2000/svg">
+                    <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><g id="SVGRepo_bgCarrier" stroke-width="0"></g><g id="SVGRepo_tracerCarrier" stroke-linecap="round" stroke-linejoin="round"></g><g id="SVGRepo_iconCarrier"> <path d="M17.5 14H19C20.1046 14 21 13.1046 21 12V5C21 3.89543 20.1046 3 19 3H12C10.8954 3 10 3.89543 10 5V6.5M5 10H12C13.1046 10 14 10.8954 14 12V19C14 20.1046 13.1046 21 12 21H5C3.89543 21 3 20.1046 3 19V12C3 10.8954 3.89543 10 5 10Z" stroke="#000000" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"></path> </g></svg>
+                </svg>
+            </button>
         </div>
 
-        <div id="message-ladder" bind:this={messageLadder}>
+        <div class="messages" bind:this={messageLadder}>
             {#each messages as msg}
-                <div class="ladder-step">
-                    <div class={msg.byMe ? "message byme" : "message"}>
-                        <div class="message-top">
-                            {msg.byMe ? "you" : msg.sender}
-                        </div>
-
-                        <div class="message-contents">
-                            {msg.contents}
-                        </div>
-                    </div> 
+                <div class="message-row {msg.byMe ? 'me' : 'them'}">
+                    <div class="message-bubble">
+                        <div class="sender">{msg.byMe ? "You" : msg.sender}</div>
+                        <div class="text">{msg.contents}</div>
+                    </div>
                 </div>
             {/each}
         </div>
 
-        <input bind:value={inputs.message} id="input-main" on:keydown={inputKeydown}>
+        <div class="input-bar">
+            <input bind:value={inputs.message} placeholder="Type a message..." on:keydown={inputKeydown}>
+        </div>
     </div>
 
     {:else}
 
-    <div id="connect-page">
-        <div class="field">
-            <div>server</div>
+    <div class="connect-ui">
+        <div class="mode-toggle">
+            <button
+                class:active={!inputs.makeNew}
+                on:click={() => { inputs.makeNew = false }}
+            >Join Group</button>
+            <button
+                class:active={inputs.makeNew}
+                on:click={() => {
+                    inputs.makeNew = true
+                    inputs.groupKey = ""
+                }}
+            >Create Group</button>
+        </div>
+
+        <div class="connect-field">
+            <p style="margin-bottom: 3px;">Server</p>
             <input bind:value={inputs.domain}>
         </div>
 
-        <div class="field">
-            <button
-                style={inputs.makeNew ? "filter: blur(1px);" : ""}
-                on:click={() => {
-                    inputs.makeNew = !inputs.makeNew
-                    inputs.groupKey = ""
-                }}
-            >key</button>
-
-            <input disabled={inputs.makeNew} bind:value={inputs.groupKey}>
+        <div class="connect-field">
+            <p style="margin-bottom: 3px;">Group key</p>
+            <input bind:value={inputs.groupKey} disabled={inputs.makeNew}>
         </div>
 
-        <button id="connect-button" on:click={() => {
+        <button class="connect-btn" on:click={() => {
             Connect(inputs.domain, inputs.makeNew, inputs.groupKey)
-        }}>connect</button>
+        }}>Connect</button>
     </div>
 
     {/if}
