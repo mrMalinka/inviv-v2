@@ -60,12 +60,34 @@
     {#if connected}
     <div class="chat-container">
         <div class="top-bar">
-            <input class="readonly-input" disabled={true} bind:value={joinedGroupKey}>
-            <button class="copy-btn" on:click={() => copyToClipboard(joinedGroupKey)} aria-label="copy group key">
-                <svg viewBox="0 0 24 24" class="copy-icon" xmlns="http://www.w3.org/2000/svg">
-                    <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><g id="SVGRepo_bgCarrier" stroke-width="0"></g><g id="SVGRepo_tracerCarrier" stroke-linecap="round" stroke-linejoin="round"></g><g id="SVGRepo_iconCarrier"> <path d="M17.5 14H19C20.1046 14 21 13.1046 21 12V5C21 3.89543 20.1046 3 19 3H12C10.8954 3 10 3.89543 10 5V6.5M5 10H12C13.1046 10 14 10.8954 14 12V19C14 20.1046 13.1046 21 12 21H5C3.89543 21 3 20.1046 3 19V12C3 10.8954 3.89543 10 5 10Z" stroke="#000000" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"></path> </g></svg>
+            <div class="copy-input-wrapper">
+                <input
+                    class="readonly-input noblur"
+                    disabled={true}
+                    bind:value={joinedGroupKey}
+                    aria-label="group key"
+                >
+                <button
+                    class="copy-btn"
+                    on:click={() => copyToClipboard(joinedGroupKey)}
+                    aria-label="copy group key"
+                >
+                <svg viewBox="0 0 24 24" fill="none" style="margin: 3px; border-radius: 6px;">
+                    <g id="SVGRepo_bgCarrier" stroke-width="0"></g>
+                    <g id="SVGRepo_tracerCarrier" stroke-linecap="round" stroke-linejoin="round"></g>
+                    <!-- FIXME: icon is not colored -->
+                    <g id="SVGRepo_iconCarrier">
+                        <path
+                            d="M17.5 14H19C20.1046 14 21 13.1046 21 12V5C21 3.89543 20.1046 3 19 3H12C10.8954 3 10 3.89543 10 5V6.5M5 10H12C13.1046 10 14 10.8954 14 12V19C14 20.1046 13.1046 21 12 21H5C3.89543 21 3 20.1046 3 19V12C3 10.8954 3.89543 10 5 10Z"
+                            stroke="#0e0e0e"
+                            stroke-width="1.5"
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                        ></path>
+                    </g>
                 </svg>
-            </button>
+                </button>
+            </div>
         </div>
 
         <div class="messages" bind:this={messageLadder}>
@@ -80,7 +102,7 @@
         </div>
 
         <div class="input-bar">
-            <input bind:value={inputs.message} placeholder="Type a message..." on:keydown={inputKeydown}>
+            <input bind:value={inputs.message} placeholder="Message the chat" on:keydown={inputKeydown}>
         </div>
     </div>
 
@@ -103,12 +125,16 @@
 
         <div class="connect-field">
             <p style="margin-bottom: 3px;">Server</p>
-            <input bind:value={inputs.domain}>
+            <input bind:value={inputs.domain} placeholder="example.com:14194">
         </div>
 
         <div class="connect-field">
             <p style="margin-bottom: 3px;">Group key</p>
-            <input bind:value={inputs.groupKey} disabled={inputs.makeNew}>
+            <input
+                bind:value={inputs.groupKey}
+                disabled={inputs.makeNew}
+                placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+            >
         </div>
 
         <button class="connect-btn" on:click={() => {

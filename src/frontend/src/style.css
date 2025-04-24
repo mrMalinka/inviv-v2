@@ -46,59 +46,62 @@ main {
 .top-bar {
     display: flex;
     align-items: center;
-    gap: 10px;
     padding: 10px;
     background: #222;
     border-bottom: 1px solid #333;
 }
 
-.readonly-input {
+.copy-input-wrapper {
+    position: relative;
     flex: 1;
-    padding: 8px 10px;
+}
+
+.readonly-input {
+    width: 100%;
+    padding: 8px 45px 8px 10px;
     border-radius: 6px;
     background: #2a2a2a;
     color: var(--text);
     border: 1px solid #444;
     font-size: 0.9rem;
     filter: blur(0);
-    transition: filter 0.2s ease;
+    transition: transform 0.1s ease, box-shadow 0.1s ease, filter 0.2s ease;
 }
 
-.readonly-input:disabled {
+.readonly-input:disabled :not(noblur) {
     filter: blur(1px);
 }
 
 .copy-btn {
-    background: var(--accent);
+    position: absolute;
+    top: 50%;
+    right: 8px;
+    transform: translateY(-50%);
+    background: #2a2a2a;
     border: none;
-    border-radius: 6px;
-    width: 40px;
-    height: 40px;
+    border-radius: 4px;
+    width: 32px;
+    height: 32px;
     display: flex;
     align-items: center;
     justify-content: center;
     cursor: pointer;
-    transition: background 0.2s, transform 0.1s;
+    transition: transform 0.1s ease, background 0.2s;
     padding: 0;
 }
 
 .copy-btn:hover {
-    background: #5c6bc0;
-}
-
-.copy-btn:focus {
-    outline: 2px solid #888;
-    outline-offset: 2px;
+    background: #333;
 }
 
 .copy-btn:active {
-    transform: scale(0.95);
+    transform: translateY(-50%) scale(0.95);
 }
 
 .copy-icon {
-    width: 70%;
-    height: 70%;
-    fill: white;
+    width: 60%;
+    height: 60%;
+    fill: var(--text);
 }
 
 .messages {
@@ -159,6 +162,12 @@ main {
     color: white;
     border: 1px solid #444;
     font-size: 1rem;
+    transition: transform 0.1s ease, box-shadow 0.1s ease;
+}
+
+.input-bar input:focus {
+    transform: scale(1.01);
+    box-shadow: 0 0 0 2px var(--accent);
 }
 
 .connect-ui {
@@ -188,7 +197,13 @@ main {
     border: none;
     font-size: 1rem;
     cursor: pointer;
-    transition: background 0.2s, color 0.2s;
+    transition: background 0.2s, color 0.2s, transform 0.1s ease;
+}
+
+.mode-toggle button:focus,
+.connect-field input:focus {
+    transform: scale(1.01);
+    box-shadow: 0 0 0 2px var(--accent);
 }
 
 .mode-toggle button.active {
@@ -202,12 +217,6 @@ main {
     flex-direction: column;
 }
 
-.connect-field label {
-    margin-bottom: 6px;
-    font-size: 0.9rem;
-    color: #aaa;
-}
-
 .connect-field input {
     padding: 10px;
     background: #2a2a2a;
@@ -215,6 +224,11 @@ main {
     border-radius: 6px;
     color: var(--text);
     font-size: 1rem;
+    transition: transform 0.1s ease, box-shadow 0.1s ease, filter 0.2s ease;
+}
+
+.connect-field input:disabled {
+    filter: blur(1px);
 }
 
 .connect-btn {
@@ -226,9 +240,13 @@ main {
     border: none;
     border-radius: 8px;
     cursor: pointer;
-    transition: background 0.2s;
+    transition: background 0.2s, transform 0.1s ease;
 }
 
 .connect-btn:hover {
     background: #00b94f;
+}
+
+.connect-btn:active {
+    transform: scale(0.98);
 }
