@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"sync"
 	"time"
 
@@ -18,6 +19,19 @@ import (
 	ecies "github.com/ecies/go/v2"
 	"github.com/gorilla/websocket"
 )
+
+const rotateKeysEvery uint8 = 8
+
+var debug = false
+
+func init() {
+	if len(os.Args) == 1 {
+		return
+	}
+	if os.Args[1] == "debug" {
+		debug = true
+	}
+}
 
 // -----
 // structure
@@ -32,8 +46,6 @@ type Member struct {
 
 	Shortterm       *ecdh.PublicKey
 	ShorttermUpdate chan *ecdh.PublicKey
-
-	RekeyTracker bool
 }
 
 type Group struct {
@@ -64,6 +76,9 @@ func authGroup(key UUID) *Group {
 
 // generates, switches, encrypts and sends to all members a new invite key for the group
 func (g *Group) RotateGroupKey() {
+	if debug {
+		log.Printf("Rotating group key (%d members)\n", len(g.Members))
+	}
 	new := generateUUID()
 	g.Key = new
 
@@ -73,7 +88,9 @@ func (g *Group) RotateGroupKey() {
 			new[:],
 		)
 		if err != nil {
-			log.Println("Invite key encryption error:", err)
+			if debug {
+				log.Println("Invite key encryption error:", err)
+			}
 			// nuke the member because of their bad key
 			member.Nuke()
 			continue
@@ -89,6 +106,10 @@ func (g *Group) RotateGroupKey() {
 }
 
 func (m *Member) Nuke() {
+	if debug {
+		log.Println("Nuking member " + uuidToString(m.Name))
+	}
+
 	defer m.Conn.WriteControl(
 		websocket.CloseMessage,
 		websocket.FormatCloseMessage(websocket.CloseNoStatusReceived, "nuked"),
@@ -110,7 +131,9 @@ func (m *Member) Nuke() {
 	}
 
 	if myGroup == nil {
-		log.Println("A user was found with no group!")
+		if debug {
+			log.Println("A user was found with no group!")
+		}
 		return
 	}
 
@@ -134,11 +157,6 @@ func (m *Member) Nuke() {
 			return groups
 		}()
 	}
-
-	// assign a new rekey tracker
-	if len(myGroup.Members) != 0 {
-		myGroup.Members[0].RekeyTracker = true
-	}
 }
 
 // -----
@@ -156,6 +174,9 @@ func packetForMember(m *Member, list []*ecdh.PublicKey) []string {
 	return newList
 }
 func (g *Group) DoRekey() {
+	if debug {
+		log.Printf("Rotating member encryption keys (%d members)\n", len(g.Members))
+	}
 	time.Sleep(1 * time.Millisecond)
 	var wg sync.WaitGroup
 
@@ -166,7 +187,9 @@ func (g *Group) DoRekey() {
 
 		err := member.Conn.WriteJSON(notif)
 		if err != nil {
-			log.Println("Error asking user to make a new key:", err)
+			if debug {
+				log.Println("Error asking user to make a new key:", err)
+			}
 			member.Nuke()
 			continue
 		}
@@ -178,7 +201,9 @@ func (g *Group) DoRekey() {
 			case newKey := <-m.ShorttermUpdate:
 				m.Shortterm = newKey
 			case <-time.After(3 * time.Second):
-				log.Printf("Member %v timed out during rekey!", i)
+				if debug {
+					log.Printf("Member %v timed out during rekey!\n", i)
+				}
 				m.Nuke()
 			}
 		}(member)
@@ -267,7 +292,7 @@ func main() {
 	log.Printf("Starting server on %v", port)
 
 	http.HandleFunc("/ws", handleWebSocket)
-	log.Fatal(http.ListenAndServe(port, nil))
+	log.Fatalln(http.ListenAndServe(port, nil))
 }
 
 // deployed for each user
@@ -290,7 +315,9 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 		// will be serialized, so deserialize it
 		key, err = stringToUUID(r.Header.Get("key"))
 		if err != nil {
-			println("bad req: key")
+			if debug {
+				log.Println("Incorrect group key format sent")
+			}
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
@@ -307,7 +334,9 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	// (in theory) will always succeed if the group was created by this user
 	myGroup := authGroup(key)
 	if myGroup == nil {
-		println("bad req: auth")
+		if debug {
+			log.Println("Incorrect group key sent")
+		}
 		w.WriteHeader(http.StatusUnauthorized)
 		return
 	}
@@ -315,7 +344,9 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	// upgrade the connection
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		log.Println("Upgrade failed:", err)
+		if debug {
+			log.Println("Upgrade failed:", err)
+		}
 		return
 	}
 	defer conn.Close()
@@ -323,12 +354,14 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	// add the new member to the group
 	myUUID := generateUUID()
 	me := &Member{
-		myUUID,
-		conn,
-		myLongterm,
-		nil, // this should be filled out in a second anyways
-		make(chan *ecdh.PublicKey),
-		new, // if making a new chat, i am automatically the tracker
+		Name: myUUID,
+		Conn: conn,
+
+		Longterm: myLongterm,
+
+		// shortterm will be filled by myGroup.DoRekey() soon
+		Shortterm:       nil,
+		ShorttermUpdate: make(chan *ecdh.PublicKey),
 	}
 	myGroup.Members = append(myGroup.Members, me)
 
@@ -338,43 +371,34 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 
 	go myGroup.DoRekey()
 
-	go func() {
-		for {
-			if me == nil {
-				break
-			}
-			if myGroup.Counter > 8 && me.RekeyTracker {
-				println("rekeying")
-				go myGroup.DoRekey()
-				myGroup.Counter = 0
-			}
-			time.Sleep(8 * time.Second)
-		}
-	}()
-
 	for {
-
 		var msg Message
 		err := conn.ReadJSON(&msg)
 		if err != nil {
-			log.Println("Error reading from WS:", err)
-			me = nil
+			if debug {
+				log.Println("Error reading from WS:", err)
+			}
 			return
 		}
 
 		switch msg.Type {
 		case MSG_MakeNewKey:
 			// the response of the client to a MSG_NewKey (for key rotation)
+			// sent by Group.DoRekey()
 			var response MessageNewKeyRequestResponse
 			err := json.Unmarshal(msg.Data, &response)
 			if err != nil {
-				log.Println("Error unmarshaling key request response:", err)
+				if debug {
+					log.Println("Error unmarshaling key request response:", err)
+				}
 				return
 			}
 
 			newKey, err := deserializePublicKey(response.SerializedNewKey, ecdh.X25519())
 			if err != nil {
-				log.Println("Error deserializing new public key:", err)
+				if debug {
+					log.Println("Error deserializing new public key:", err)
+				}
 				return
 			}
 			me.ShorttermUpdate <- newKey
@@ -383,7 +407,9 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 			var textMessage MessageText
 			err := json.Unmarshal(msg.Data, &textMessage)
 			if err != nil {
-				log.Println("Error unmarshaling text message:", err)
+				if debug {
+					log.Println("Error unmarshaling text message:", err)
+				}
 				return
 			}
 
@@ -392,6 +418,7 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 				Sender:   me.Name,
 			}
 
+			// send the message to all other members
 			for _, member := range myGroup.Members {
 				if !bytes.Equal(member.Name[:], me.Name[:]) {
 					member.Conn.WriteJSON(makeMessage(
@@ -401,6 +428,10 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 			}
 
 			myGroup.Counter++
+			if myGroup.Counter >= rotateKeysEvery {
+				go myGroup.DoRekey()
+				myGroup.Counter = 0
+			}
 		}
 	}
 }
@@ -464,7 +495,7 @@ func stringToUUID(s string) (UUID, error) {
 	return uuid, nil
 }
 
-func UUIDToString(uuid UUID) string {
+func uuidToString(uuid UUID) string {
 	return fmt.Sprintf("%x-%x-%x-%x-%x",
 		uuid[0:4],
 		uuid[4:6],
