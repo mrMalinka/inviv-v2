@@ -29,6 +29,7 @@ func init() {
 		return
 	}
 	if os.Args[1] == "debug" {
+		log.Println("Debug on")
 		debug = true
 	}
 }
@@ -66,6 +67,7 @@ var (
 func authGroup(key UUID) *Group {
 	groupsMu.Lock()
 	defer groupsMu.Unlock()
+
 	for _, group := range groups {
 		if group.Key == key {
 			return group
@@ -110,17 +112,20 @@ func (m *Member) Nuke() {
 		log.Println("Nuking member " + uuidToString(m.Name))
 	}
 
+	groupsMu.Lock()
+	defer groupsMu.Unlock()
+
 	defer m.Conn.WriteControl(
 		websocket.CloseMessage,
 		websocket.FormatCloseMessage(websocket.CloseNoStatusReceived, "nuked"),
-		time.Now().Add(5*time.Second),
+		time.Now().Add(100*time.Millisecond),
 	)
 
 	var myGroup *Group
 	// find the group this member is in
 	for _, group := range groups {
 		for _, member := range group.Members {
-			if bytes.Equal(member.Name[:], m.Name[:]) {
+			if member.Name == m.Name {
 				myGroup = group
 				break
 			}
@@ -137,25 +142,24 @@ func (m *Member) Nuke() {
 		return
 	}
 
-	myGroup.Members = func() []*Member {
-		for i, member := range myGroup.Members {
-			if member.Name == m.Name {
-				return slices.Delete(myGroup.Members, i, i+1)
-			}
+	for i, member := range myGroup.Members {
+		if member.Name == m.Name {
+			myGroup.Members = slices.Delete(myGroup.Members, i, i+1)
 		}
-		return myGroup.Members
-	}()
+	}
 
 	// nuke the group
 	if len(myGroup.Members) == 0 {
-		groups = func() []*Group {
-			for i, group := range groups {
-				if group == myGroup {
-					return slices.Delete(groups, i, i+1)
-				}
+		for i, g := range groups {
+			if g.Key == myGroup.Key {
+				continue
 			}
-			return groups
-		}()
+
+			if debug {
+				log.Println("Nuking group")
+			}
+			groups = slices.Delete(groups, i, i+1)
+		}
 	}
 }
 
@@ -308,7 +312,9 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 			Members: make([]*Member, 0),
 			Counter: 0,
 		}
+		groupsMu.Lock()
 		groups = append(groups, &newGroup)
+		groupsMu.Unlock()
 	} else {
 		// try to get the access key from the header
 		var err error
@@ -331,7 +337,7 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// try to access the group
-	// (in theory) will always succeed if the group was created by this user
+	// (hopefully) will always succeed if the group was created by this user
 	myGroup := authGroup(key)
 	if myGroup == nil {
 		if debug {

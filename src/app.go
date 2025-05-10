@@ -118,6 +118,21 @@ func (a *App) Connect(host string, makeNew bool, keyStr string) {
 
 	runtime.EventsEmit(a.ctx, "connection-change", true)
 }
+func (a *App) Disconnect() {
+	Conn.WriteControl(
+		websocket.CloseMessage,
+		websocket.FormatCloseMessage(websocket.CloseNormalClosure, "bye"),
+		time.Now().Add(3*time.Millisecond),
+	)
+	Conn.Close()
+
+	LongtermPriv = nil
+	LongtermPub = nil
+	ShorttermPriv = nil
+	SharedKey = [32]byte{}
+
+	runtime.EventsEmit(a.ctx, "connection-change", false)
+}
 
 // main receive function
 func receiver(ctx context.Context) {

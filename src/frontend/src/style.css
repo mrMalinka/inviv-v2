@@ -1,10 +1,11 @@
 :root {
     --bg-color: #121212;
     --surface-color: #1e1e1e;
-    --accent: #3d5afe;
+    --accent: #bf5354;
     --text: #e0e0e0;
     --bubble-incoming: #2e2e2e;
-    --bubble-outgoing: #2962ff;
+    /*--bubble-outgoing: #2962ff;*/
+    --bubble-outgoing: var(--accent);
     --bubble-text: #fff;
 }
 
@@ -235,7 +236,7 @@ main {
     width: 100%;
     padding: 12px;
     font-size: 1rem;
-    background: #00c853;
+    background: #c88200;
     color: white;
     border: none;
     border-radius: 8px;
@@ -244,7 +245,7 @@ main {
 }
 
 .connect-btn:hover {
-    background: #00b94f;
+    background: #cf9a08;
 }
 
 .connect-btn:active {

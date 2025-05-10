@@ -3,4 +3,6 @@
 
 export function Connect(arg1:string,arg2:boolean,arg3:string):Promise<void>;
 
+export function Disconnect():Promise<void>;
+
 export function SendTextMessage(arg1:string):Promise<void>;

@@ -6,6 +6,10 @@ export function Connect(arg1, arg2, arg3) {
   return window['go']['main']['App']['Connect'](arg1, arg2, arg3);
 }
 
+export function Disconnect() {
+  return window['go']['main']['App']['Disconnect']();
+}
+
 export function SendTextMessage(arg1) {
   return window['go']['main']['App']['SendTextMessage'](arg1);
 }

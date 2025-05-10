@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Connect, SendTextMessage } from "../wailsjs/go/main/App"
+  import { Connect, Disconnect, SendTextMessage } from "../wailsjs/go/main/App"
   import { EventsOn } from "../wailsjs/runtime/runtime"
 
   class Message {
@@ -42,17 +42,22 @@
 
   async function copyToClipboard(text: string) {
       try {
-          await navigator.clipboard.writeText(text);
+        await navigator.clipboard.writeText(text);
       } catch (err) {
-          console.error('Failed to copy:', err);
+        console.error('Failed to copy:', err);
       }
   }
 
-  function inputKeydown(event) {
-      if (event.key === "Enter") {
-          SendTextMessage(inputs.message)
-          inputs.message = ""
+  function inputKeydown(event: { key: string; }) {
+      if (event.key !== "Enter" || inputs.message.length === 0) {
+        return
       }
+      if (inputs.message === "/leave") {
+        Disconnect()
+        return
+      }
+      SendTextMessage(inputs.message)
+      inputs.message = ""
   }
 </script>
 
@@ -102,7 +107,7 @@
       </div>
 
       <div class="input-bar">
-          <input bind:value={inputs.message} placeholder="Message the chat" on:keydown={inputKeydown}>
+          <input bind:value={inputs.message} placeholder="Message the chat (or /leave to exit)" on:keydown={inputKeydown}>
       </div>
   </div>
 
