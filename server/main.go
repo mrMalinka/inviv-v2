@@ -117,7 +117,7 @@ func (m *Member) Nuke() {
 
 	defer m.Conn.WriteControl(
 		websocket.CloseMessage,
-		websocket.FormatCloseMessage(websocket.CloseNoStatusReceived, "nuked"),
+		websocket.FormatCloseMessage(websocket.CloseNormalClosure, "nuked"),
 		time.Now().Add(100*time.Millisecond),
 	)
 
@@ -178,6 +178,8 @@ func packetForMember(m *Member, list []*ecdh.PublicKey) []string {
 	return newList
 }
 func (g *Group) DoRekey() {
+	const rekeyTimeout time.Duration = 3 * time.Second
+
 	if debug {
 		log.Printf("Rotating member encryption keys (%d members)\n", len(g.Members))
 	}
@@ -203,8 +205,11 @@ func (g *Group) DoRekey() {
 			defer wg.Done()
 			select {
 			case newKey := <-m.ShorttermUpdate:
+				if debug {
+					log.Println("Received key from " + uuidToString(m.Name))
+				}
 				m.Shortterm = newKey
-			case <-time.After(3 * time.Second):
+			case <-time.After(rekeyTimeout):
 				if debug {
 					log.Printf("Member %v timed out during rekey!\n", i)
 				}
@@ -223,6 +228,9 @@ func (g *Group) DoRekey() {
 	for _, member := range g.Members {
 		packet := MessageNewPeerKeys{
 			packetForMember(member, list),
+		}
+		if debug {
+			log.Printf("Sending %d key(s) to %s\n", len(packet.Keys), uuidToString(member.Name))
 		}
 		member.Conn.WriteJSON(makeMessage(packet, MSG_NewPeerKeys))
 	}
