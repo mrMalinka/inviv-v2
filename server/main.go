@@ -143,6 +143,17 @@ func (m *Member) Nuke() {
 	}
 
 	for i, member := range myGroup.Members {
+		if member == nil {
+			if debug {
+				log.Printf(
+					"WARNING: nil member found at %d in group with key %s\n",
+					i, uuidToString(myGroup.Key),
+				)
+			}
+			// delete the nil
+			myGroup.Members = slices.Delete(myGroup.Members, i, i+1)
+			continue
+		}
 		if member.Name == m.Name {
 			myGroup.Members = slices.Delete(myGroup.Members, i, i+1)
 		}
@@ -151,7 +162,7 @@ func (m *Member) Nuke() {
 	// nuke the group
 	if len(myGroup.Members) == 0 {
 		for i, g := range groups {
-			if g.Key == myGroup.Key {
+			if g.Key != myGroup.Key {
 				continue
 			}
 
@@ -159,6 +170,7 @@ func (m *Member) Nuke() {
 				log.Println("Nuking group")
 			}
 			groups = slices.Delete(groups, i, i+1)
+			break
 		}
 	}
 }
@@ -378,7 +390,9 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 		Shortterm:       nil,
 		ShorttermUpdate: make(chan *ecies.PublicKey),
 	}
+	groupsMu.Lock()
 	myGroup.Members = append(myGroup.Members, me)
+	groupsMu.Unlock()
 
 	defer me.Nuke()
 
