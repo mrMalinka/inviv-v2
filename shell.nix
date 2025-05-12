@@ -4,6 +4,8 @@ pkgs.mkShell {
   name = "wails-dev-env";
 
   packages = with pkgs; [
+    nodejs
+
     gtk3
     webkitgtk
     pkg-config
