@@ -1,21 +1,12 @@
 package main
 
 import (
-	"bytes"
 	"context"
-	"crypto/aes"
-	"crypto/cipher"
-	"crypto/ecdh"
-	"crypto/rand"
-	"crypto/sha256"
-	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"fmt"
-	"io"
 	"log"
 	"net/http"
-	"sort"
 	"strings"
 	"time"
 
@@ -24,14 +15,14 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
-type UUID [16]byte
+type uuID [16]byte
 
 var (
 	LongtermPriv *ecies.PrivateKey
 	LongtermPub  *ecies.PublicKey
 
-	ShorttermPriv *ecdh.PrivateKey
-	SharedKey     [32]byte
+	PeerPubs      map[uuID]*ecies.PublicKey
+	ShorttermPriv *ecies.PrivateKey
 
 	Conn *websocket.Conn
 )
@@ -51,14 +42,14 @@ type Message struct {
 }
 
 type MessageText struct {
-	// encrypted
-	Contents []byte `json:"contents"`
+	// map of serialized UUID to message encrypted with that UUID's public key
+	Contents map[string][]byte `json:"contents"`
 }
 
 type MessageTextForward struct {
 	// encrypted
 	Contents []byte `json:"contents"`
-	Sender   UUID   `json:"sender"`
+	Sender   uuID   `json:"sender"`
 }
 
 type MessageNewGroupKey struct {
@@ -66,7 +57,8 @@ type MessageNewGroupKey struct {
 }
 
 type MessageNewPeerKeys struct {
-	Keys []string `json:"keys"`
+	// map of serialized uuID to serialized public key
+	Keys map[string]string `json:"keys"`
 }
 
 type MessageNewKeyRequestResponse struct {
@@ -129,7 +121,7 @@ func (a *App) Disconnect() {
 	LongtermPriv = nil
 	LongtermPub = nil
 	ShorttermPriv = nil
-	SharedKey = [32]byte{}
+	PeerPubs = map[uuID]*ecies.PublicKey{}
 
 	runtime.EventsEmit(a.ctx, "connection-change", false)
 }
@@ -159,7 +151,7 @@ func receiver(ctx context.Context) {
 				log.Println("Error decrypting new group key:", err)
 				continue
 			}
-			runtime.EventsEmit(ctx, "key-update", UUIDToString(UUID(key)))
+			runtime.EventsEmit(ctx, "key-update", uuIDToString(uuID(key)))
 		case MSG_NewPeerKeys:
 			var keysMsg MessageNewPeerKeys
 			err := json.Unmarshal(message.Data, &keysMsg)
@@ -168,30 +160,30 @@ func receiver(ctx context.Context) {
 				continue
 			}
 
-			var list []*ecdh.PublicKey
-			for _, serializedKey := range keysMsg.Keys {
-				deserializedKey, err := deserializePublicKey(serializedKey, ecdh.X25519())
+			PeerPubs = make(map[uuID]*ecies.PublicKey)
+
+			for strUUID, strKey := range keysMsg.Keys {
+				deserializedKey, err := deserializePublicKey(string(strKey))
 				if err != nil {
-					// if this happens, our "shared" secret would be out of sync so panic anyways
-					log.Fatalln("Error deserializing peer public key:", err)
+					log.Println("Error deserializing peer public key:", err)
+					continue
 				}
-				list = append(list, deserializedKey)
-			}
+				deserializedUUID, err := stringToUUID(strUUID)
+				if err != nil {
+					log.Println("Error deserializing peer UUID:", err)
+					continue
+				}
 
-			newKey, err := computeSharedKey(ShorttermPriv, list)
-			if err != nil {
-				log.Fatalln("Error computing shared key:", err)
+				PeerPubs[deserializedUUID] = deserializedKey
 			}
-
-			SharedKey = newKey
 		case MSG_MakeNewKey:
-			ShorttermPriv, err = ecdh.X25519().GenerateKey(rand.Reader)
+			ShorttermPriv, err = ecies.GenerateKey()
 			if err != nil {
 				log.Fatalln(err)
 			}
 
 			response := MessageNewKeyRequestResponse{
-				SerializedNewKey: serializePublicKey(ShorttermPriv.PublicKey()),
+				SerializedNewKey: serializePublicKey(ShorttermPriv.PublicKey),
 			}
 
 			err = Conn.WriteJSON(makeMessage(response, MSG_MakeNewKey))
@@ -206,8 +198,7 @@ func receiver(ctx context.Context) {
 				continue
 			}
 
-			SharedKey = sha256.Sum256(SharedKey[:]) // ratchet forward
-			plaintext, err := decrypt(messageText.Contents, SharedKey[:])
+			plaintext, err := ecies.Decrypt(ShorttermPriv, messageText.Contents)
 			if err != nil {
 				log.Println("Error decrypting message:", err)
 				continue
@@ -216,7 +207,7 @@ func receiver(ctx context.Context) {
 			runtime.EventsEmit(
 				ctx,
 				"new-message",
-				UUIDToString(messageText.Sender),
+				uuIDToString(messageText.Sender),
 				string(plaintext),
 				false,
 			)
@@ -225,20 +216,20 @@ func receiver(ctx context.Context) {
 }
 
 func (a *App) SendTextMessage(contents string) {
-	// ratchet the key forward
-	SharedKey = sha256.Sum256(SharedKey[:])
+	msg := new(MessageText)
+	msg.Contents = make(map[string][]byte)
 
-	// encrypt
-	ciphertext, err := encrypt([]byte(contents), SharedKey[:])
-	if err != nil {
-		log.Fatalln("Error encrypting message:", err)
+	log.Printf("%v", PeerPubs)
+	for uuid, key := range PeerPubs {
+		ciphertext, err := ecies.Encrypt(key, []byte(contents))
+		if err != nil {
+			log.Fatalln("Error encrypting message:", err)
+		}
+
+		msg.Contents[uuIDToString(uuid)] = ciphertext
 	}
 
-	msg := MessageText{
-		Contents: ciphertext,
-	}
-
-	err = Conn.WriteJSON(makeMessage(msg, MSG_Text))
+	err := Conn.WriteJSON(makeMessage(msg, MSG_Text))
 	if err != nil {
 		log.Fatalln("Error sending message:", err)
 	}
@@ -260,103 +251,18 @@ func makeMessage(msg any, typ uint8) Message {
 }
 
 // -----
-// crypto
-// -----
-
-func computeSharedKey(localPrivateKey *ecdh.PrivateKey, peerPublicKeys []*ecdh.PublicKey) ([32]byte, error) {
-	// sort first
-	sortedKeys := make([]*ecdh.PublicKey, len(peerPublicKeys))
-	copy(sortedKeys, peerPublicKeys)
-	sort.Slice(sortedKeys, func(i, j int) bool {
-		return bytes.Compare(sortedKeys[i].Bytes(), sortedKeys[j].Bytes()) < 0
-	})
-
-	localPublicKey := localPrivateKey.PublicKey()
-
-	allKeys := append(sortedKeys, localPublicKey)
-	sort.Slice(allKeys, func(i, j int) bool {
-		return bytes.Compare(allKeys[i].Bytes(), allKeys[j].Bytes()) < 0
-	})
-
-	combined := make([]byte, 0, 32*len(allKeys))
-	for _, pubKey := range allKeys {
-		if !bytes.Equal(pubKey.Bytes(), localPublicKey.Bytes()) {
-			secret, err := localPrivateKey.ECDH(pubKey)
-			if err != nil {
-				return [32]byte{}, err
-			}
-			combined = append(combined, secret...)
-		}
-	}
-
-	groupKey := sha256.Sum256(combined)
-	return groupKey, nil
-}
-
-func encrypt(plaintext []byte, key []byte) ([]byte, error) {
-	block, err := aes.NewCipher(key)
-	if err != nil {
-		return nil, err
-	}
-
-	aesgcm, err := cipher.NewGCM(block)
-	if err != nil {
-		return nil, err
-	}
-
-	nonce := make([]byte, aesgcm.NonceSize())
-	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
-		return nil, err
-	}
-
-	ciphertext := aesgcm.Seal(nonce, nonce, plaintext, nil)
-	return ciphertext, nil
-}
-
-func decrypt(ciphertext []byte, key []byte) ([]byte, error) {
-	block, err := aes.NewCipher(key)
-	if err != nil {
-		return nil, err
-	}
-
-	aesgcm, err := cipher.NewGCM(block)
-	if err != nil {
-		return nil, err
-	}
-
-	nonceSize := aesgcm.NonceSize()
-	if len(ciphertext) < nonceSize {
-		return nil, errors.New("ciphertext too short")
-	}
-
-	nonce, ciphertext := ciphertext[:nonceSize], ciphertext[nonceSize:]
-
-	plaintext, err := aesgcm.Open(nil, nonce, ciphertext, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	return plaintext, nil
-}
-
-// -----
 // uuid's, strings, etc
 // -----
 
-func serializePublicKey(pub *ecdh.PublicKey) string {
-	return base64.StdEncoding.EncodeToString(pub.Bytes())
+func serializePublicKey(pub *ecies.PublicKey) string {
+	return pub.Hex(true)
 }
 
-func deserializePublicKey(encoded string, curve ecdh.Curve) (*ecdh.PublicKey, error) {
-	decoded, err := base64.StdEncoding.DecodeString(encoded)
-	if err != nil {
-		return nil, err
-	}
-
-	return curve.NewPublicKey(decoded)
+func deserializePublicKey(encoded string) (*ecies.PublicKey, error) {
+	return ecies.NewPublicKeyFromHex(encoded)
 }
 
-func UUIDToString(uuid UUID) string {
+func uuIDToString(uuid uuID) string {
 	return fmt.Sprintf("%x-%x-%x-%x-%x",
 		uuid[0:4],
 		uuid[4:6],
@@ -364,6 +270,34 @@ func UUIDToString(uuid UUID) string {
 		uuid[8:10],
 		uuid[10:],
 	)
+}
+func stringToUUID(s string) (uuID, error) {
+	hexStr := ""
+	for _, c := range s {
+		if c != '-' {
+			hexStr += string(c)
+		}
+	}
+
+	if len(hexStr) != 32 {
+		return uuID{}, fmt.Errorf("invalid UUID length")
+	}
+
+	decoded, err := hex.DecodeString(hexStr)
+	if err != nil {
+		return uuID{}, err
+	}
+
+	if decoded[6]&0xf0 != 0x40 {
+		return uuID{}, fmt.Errorf("invalid UUID version")
+	}
+	if decoded[8]&0xc0 != 0x80 {
+		return uuID{}, fmt.Errorf("invalid UUID variant")
+	}
+
+	var uuid uuID
+	copy(uuid[:], decoded)
+	return uuid, nil
 }
 
 func domainPath(domain string) string {

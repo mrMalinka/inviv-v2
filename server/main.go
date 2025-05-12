@@ -1,10 +1,7 @@
 package main
 
 import (
-	"bytes"
-	"crypto/ecdh"
 	"crypto/rand"
-	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -38,19 +35,19 @@ func init() {
 // structure
 // -----
 
-type UUID [16]byte
+type uuID [16]byte
 
 type Member struct {
-	Name     UUID // only ever used for the users to know who's sending a message
+	Name     uuID // only ever used for the users to know who's sending a message
 	Conn     *websocket.Conn
 	Longterm *ecies.PublicKey // only ever used to send the a new group key (the key used for inviting)
 
-	Shortterm       *ecdh.PublicKey
-	ShorttermUpdate chan *ecdh.PublicKey
+	Shortterm       *ecies.PublicKey
+	ShorttermUpdate chan *ecies.PublicKey
 }
 
 type Group struct {
-	Key     UUID
+	Key     uuID
 	Members []*Member
 	Counter uint8
 }
@@ -64,7 +61,7 @@ var (
 // inviting system
 // -----
 
-func authGroup(key UUID) *Group {
+func authGroup(key uuID) *Group {
 	groupsMu.Lock()
 	defer groupsMu.Unlock()
 
@@ -115,11 +112,14 @@ func (m *Member) Nuke() {
 	groupsMu.Lock()
 	defer groupsMu.Unlock()
 
-	defer m.Conn.WriteControl(
-		websocket.CloseMessage,
-		websocket.FormatCloseMessage(websocket.CloseNormalClosure, "nuked"),
-		time.Now().Add(100*time.Millisecond),
-	)
+	if m.Conn != nil {
+		defer m.Conn.WriteControl(
+			websocket.CloseMessage,
+			websocket.FormatCloseMessage(websocket.CloseNormalClosure, "nuked"),
+			time.Now().Add(100*time.Millisecond),
+		)
+		defer m.Conn.Close()
+	}
 
 	var myGroup *Group
 	// find the group this member is in
@@ -167,11 +167,11 @@ func (m *Member) Nuke() {
 // main message system
 // -----
 
-func packetForMember(m *Member, list []*ecdh.PublicKey) []string {
-	var newList []string
-	for _, key := range list {
-		if !key.Equal(m.Shortterm) {
-			newList = append(newList, serializePublicKey(key))
+func packetForMember(m *Member, list map[string]string) map[string]string {
+	newList := make(map[string]string)
+	for uuid, key := range list {
+		if uuid != uuidToString(m.Name) {
+			newList[uuid] = key
 		}
 	}
 
@@ -220,9 +220,9 @@ func (g *Group) DoRekey() {
 
 	wg.Wait()
 
-	var list []*ecdh.PublicKey
+	list := make(map[string]string)
 	for _, member := range g.Members {
-		list = append(list, member.Shortterm)
+		list[uuidToString(member.Name)] = serializePublicKey(member.Shortterm)
 	}
 
 	for _, member := range g.Members {
@@ -253,14 +253,14 @@ type Message struct {
 }
 
 type MessageText struct {
-	// encrypted
-	Contents []byte `json:"contents"`
+	// map of serialized UUID to message encrypted with that UUID's public key
+	Contents map[string][]byte `json:"contents"`
 }
 
 type MessageTextForward struct {
 	// encrypted
 	Contents []byte `json:"contents"`
-	Sender   UUID   `json:"sender"`
+	Sender   uuID   `json:"sender"`
 }
 
 type MessageNewGroupKey struct {
@@ -269,7 +269,8 @@ type MessageNewGroupKey struct {
 }
 
 type MessageNewPeerKeys struct {
-	Keys []string `json:"keys"`
+	// map of serialized uuID to serialized public key
+	Keys map[string]string `json:"keys"`
 }
 
 type MessageNewKeyRequestResponse struct {
@@ -311,7 +312,7 @@ func main() {
 func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	new := r.Header.Get("makenew") == "yes"
 
-	var key UUID
+	var key uuID
 	if new {
 		// make a completely new group and initialize it with a new key
 		key = generateUUID()
@@ -366,16 +367,16 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	defer conn.Close()
 
 	// add the new member to the group
-	myUUID := generateUUID()
+	myuuID := generateUUID()
 	me := &Member{
-		Name: myUUID,
+		Name: myuuID,
 		Conn: conn,
 
 		Longterm: myLongterm,
 
 		// shortterm will be filled by myGroup.DoRekey() soon
 		Shortterm:       nil,
-		ShorttermUpdate: make(chan *ecdh.PublicKey),
+		ShorttermUpdate: make(chan *ecies.PublicKey),
 	}
 	myGroup.Members = append(myGroup.Members, me)
 
@@ -408,7 +409,7 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 
-			newKey, err := deserializePublicKey(response.SerializedNewKey, ecdh.X25519())
+			newKey, err := deserializePublicKey(response.SerializedNewKey)
 			if err != nil {
 				if debug {
 					log.Println("Error deserializing new public key:", err)
@@ -416,7 +417,6 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			me.ShorttermUpdate <- newKey
-
 		case MSG_Text:
 			var textMessage MessageText
 			err := json.Unmarshal(msg.Data, &textMessage)
@@ -427,14 +427,29 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 
-			toForward := MessageTextForward{
-				Contents: textMessage.Contents,
-				Sender:   me.Name,
-			}
+			for strUUID, contents := range textMessage.Contents {
+				uuid, err := stringToUUID(strUUID)
+				if err != nil {
+					if debug {
+						log.Println("Someone sent a message with an invalid peer UUID!")
+					}
+					return
+				}
 
-			// send the message to all other members
-			for _, member := range myGroup.Members {
-				if !bytes.Equal(member.Name[:], me.Name[:]) {
+				for _, member := range myGroup.Members {
+					if member.Name == me.Name || member.Name != uuid {
+						continue
+					}
+
+					toForward := MessageTextForward{
+						Contents: contents,
+						Sender:   me.Name,
+					}
+
+					if debug {
+						log.Println("Sending to " + uuidToString(member.Name))
+					}
+
 					member.Conn.WriteJSON(makeMessage(
 						toForward, MSG_Text,
 					)) // forward directly
@@ -454,20 +469,15 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 // working with strings, uuid, etc
 // -----
 
-func serializePublicKey(pub *ecdh.PublicKey) string {
-	return base64.StdEncoding.EncodeToString(pub.Bytes())
+func serializePublicKey(pub *ecies.PublicKey) string {
+	return pub.Hex(true)
 }
 
-func deserializePublicKey(encoded string, curve ecdh.Curve) (*ecdh.PublicKey, error) {
-	decoded, err := base64.StdEncoding.DecodeString(encoded)
-	if err != nil {
-		return nil, err
-	}
-
-	return curve.NewPublicKey(decoded)
+func deserializePublicKey(encoded string) (*ecies.PublicKey, error) {
+	return ecies.NewPublicKeyFromHex(encoded)
 }
 
-func generateUUID() UUID {
+func generateUUID() uuID {
 	uuid := make([]byte, 16)
 	if _, err := rand.Read(uuid); err != nil {
 		// realistically this is never happening
@@ -477,10 +487,10 @@ func generateUUID() UUID {
 	uuid[6] = (uuid[6] & 0x0f) | 0x40
 	uuid[8] = (uuid[8] & 0x3f) | 0x80
 
-	return UUID(uuid)
+	return uuID(uuid)
 }
 
-func stringToUUID(s string) (UUID, error) {
+func stringToUUID(s string) (uuID, error) {
 	hexStr := ""
 	for _, c := range s {
 		if c != '-' {
@@ -489,27 +499,27 @@ func stringToUUID(s string) (UUID, error) {
 	}
 
 	if len(hexStr) != 32 {
-		return UUID{}, fmt.Errorf("invalid UUID length")
+		return uuID{}, fmt.Errorf("invalid UUID length")
 	}
 
 	decoded, err := hex.DecodeString(hexStr)
 	if err != nil {
-		return UUID{}, err
+		return uuID{}, err
 	}
 
 	if decoded[6]&0xf0 != 0x40 {
-		return UUID{}, fmt.Errorf("invalid UUID version")
+		return uuID{}, fmt.Errorf("invalid UUID version")
 	}
 	if decoded[8]&0xc0 != 0x80 {
-		return UUID{}, fmt.Errorf("invalid UUID variant")
+		return uuID{}, fmt.Errorf("invalid UUID variant")
 	}
 
-	var uuid UUID
+	var uuid uuID
 	copy(uuid[:], decoded)
 	return uuid, nil
 }
 
-func uuidToString(uuid UUID) string {
+func uuidToString(uuid uuID) string {
 	return fmt.Sprintf("%x-%x-%x-%x-%x",
 		uuid[0:4],
 		uuid[4:6],
