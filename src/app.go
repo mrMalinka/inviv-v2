@@ -34,6 +34,7 @@ const (
 	MSG_MakeNewKey
 	MSG_NewPeerKeys
 	MSG_Text
+	MSG_SomeoneLeft
 )
 
 type Message struct {
@@ -63,6 +64,10 @@ type MessageNewPeerKeys struct {
 
 type MessageNewKeyRequestResponse struct {
 	SerializedNewKey string `json:"pub"`
+}
+
+type MessageSomeoneLeft struct {
+	Who uuID `json:"who"`
 }
 
 // -----
@@ -160,6 +165,7 @@ func receiver(ctx context.Context) {
 				continue
 			}
 
+			before := len(PeerPubs)
 			PeerPubs = make(map[uuID]*ecies.PublicKey)
 
 			for strUUID, strKey := range keysMsg.Keys {
@@ -175,6 +181,10 @@ func receiver(ctx context.Context) {
 				}
 
 				PeerPubs[deserializedUUID] = deserializedKey
+			}
+
+			if before != len(PeerPubs) {
+				updateInfo(fmt.Sprintf("members: %d", len(PeerPubs)), ctx)
 			}
 		case MSG_MakeNewKey:
 			ShorttermPriv, err = ecies.GenerateKey()
@@ -209,8 +219,19 @@ func receiver(ctx context.Context) {
 				"new-message",
 				uuIDToString(messageText.Sender),
 				string(plaintext),
-				false,
+				"them",
 			)
+		case MSG_SomeoneLeft:
+			var messageSomeoneLeft MessageSomeoneLeft
+			err := json.Unmarshal(message.Data, &messageSomeoneLeft)
+			if err != nil {
+				log.Println("Error unmarshaling left message:", err)
+				continue
+			}
+			updateInfo(fmt.Sprintf("user %s left", uuIDToString(messageSomeoneLeft.Who)), ctx)
+		default:
+			log.Printf("Unknown message type %d received. Client may be out of date!\n", message.Type)
+			updateInfo("client may be out of date", ctx)
 		}
 	}
 }
@@ -219,7 +240,6 @@ func (a *App) SendTextMessage(contents string) {
 	msg := new(MessageText)
 	msg.Contents = make(map[string][]byte)
 
-	log.Printf("%v", PeerPubs)
 	for uuid, key := range PeerPubs {
 		ciphertext, err := ecies.Encrypt(key, []byte(contents))
 		if err != nil {
@@ -234,7 +254,7 @@ func (a *App) SendTextMessage(contents string) {
 		log.Fatalln("Error sending message:", err)
 	}
 
-	runtime.EventsEmit(a.ctx, "new-message", "you", contents, true)
+	runtime.EventsEmit(a.ctx, "new-message", "", contents, "me")
 }
 
 func makeMessage(msg any, typ uint8) Message {
@@ -248,6 +268,10 @@ func makeMessage(msg any, typ uint8) Message {
 		Type: typ,
 		Data: embed,
 	}
+}
+
+func updateInfo(info string, ctx context.Context) {
+	runtime.EventsEmit(ctx, "new-message", "", info, "info")
 }
 
 // -----

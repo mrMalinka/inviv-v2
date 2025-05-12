@@ -6,28 +6,37 @@
 	} from "../wailsjs/go/main/App";
 	import { EventsOn } from "../wailsjs/runtime/runtime";
 
-	class Message {
+	export class Message {
 		constructor(
 			public sender: string,
 			public contents: string,
-			public byMe: boolean,
-		) {}
+			public type: string,
+		) {
+			const validTypes: string[] = ["info", "me", "them"];
+			if (!validTypes.includes(type)) {
+				throw new Error(`invalid message type: ${type}`);
+			}
+		}
 	}
+
+	// group key
 
 	let joinedGroupKey: string = "";
 	EventsOn("key-update", (key: string) => {
 		joinedGroupKey = key;
 	});
 
+	// main messages
+
 	let messages: Message[] = [];
 	let messageLadder: HTMLDivElement;
 	EventsOn(
 		"new-message",
-		(sender: string, contents: string, byMe: boolean) => {
+		(sender: string, contents: string, type: string) => {
 			const shouldScroll =
 				messageLadder.scrollTop + messageLadder.clientHeight >=
 				messageLadder.scrollHeight - 10;
-			messages = [...messages, new Message(sender, contents, byMe)];
+			messages = [...messages, new Message(sender, contents, type)];
 			setTimeout(() => {
 				if (shouldScroll) {
 					messageLadder.scrollTop = messageLadder.scrollHeight;
@@ -36,6 +45,8 @@
 		},
 	);
 
+	// inputting
+
 	let inputs = {
 		groupKey: "",
 		makeNew: false,
@@ -43,30 +54,34 @@
 		domain: "",
 	};
 
+	// connection handling
+
 	let connected = false;
 	EventsOn("connection-change", (conn: boolean) => {
 		connected = conn;
 		messages = [];
 	});
 
+	// helper
+
+	function inputKeydown(event: { key: string }) {
+		if (event.key !== "Enter" || inputs.message.length === 0) {
+			return;
+		}
+		if (inputs.message === "/leave") {
+			Disconnect();
+			inputs.message = "";
+			return;
+		}
+		SendTextMessage(inputs.message);
+		inputs.message = "";
+	}
 	async function copyToClipboard(text: string) {
 		try {
 			await navigator.clipboard.writeText(text);
 		} catch (err) {
 			console.error("Failed to copy:", err);
 		}
-	}
-
-	function inputKeydown(event: { key: string }) {
-		if (event.key !== "Enter" || inputs.message.length === 0) {
-			return;
-		}
-		inputs.message = "";
-		if (inputs.message === "/leave") {
-			Disconnect();
-			return;
-		}
-		SendTextMessage(inputs.message);
 	}
 </script>
 
@@ -114,14 +129,20 @@
 
 			<div class="messages" bind:this={messageLadder}>
 				{#each messages as msg}
-					<div class="message-row {msg.byMe ? 'me' : 'them'}">
-						<div class="message-bubble">
-							<div class="sender">
-								{msg.byMe ? "You" : msg.sender}
+					{#if msg.type === "me" || msg.type == "them"}
+						<div
+							class="message-row {msg.type === 'me'
+								? 'me'
+								: 'them'}"
+						>
+							<div class="message-bubble">
+								<div class="sender">
+									{msg.type === "me" ? "You" : msg.sender}
+								</div>
+								<div class="text">{msg.contents}</div>
 							</div>
-							<div class="text">{msg.contents}</div>
 						</div>
-					</div>
+					{:else}<div class="info-row">{msg.contents}</div>{/if}
 				{/each}
 			</div>
 

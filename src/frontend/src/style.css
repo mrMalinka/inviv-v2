@@ -158,6 +158,32 @@ main {
 	word-break: break-word;
 }
 
+.info-row {
+	display: flex;
+	align-items: center;
+	text-align: center;
+	color: #444;
+	font-size: 0.85rem;
+	margin: 20px 0;
+	position: relative;
+}
+
+.info-row::before,
+.info-row::after {
+	content: "";
+	flex: 1;
+	height: 1px;
+	background: #444;
+}
+
+.info-row::before {
+	margin-right: 10px;
+}
+
+.info-row::after {
+	margin-left: 10px;
+}
+
 .input-bar {
 	padding: 10px;
 	background: #222;

@@ -154,8 +154,15 @@ func (m *Member) Nuke() {
 			myGroup.Members = slices.Delete(myGroup.Members, i, i+1)
 			continue
 		}
+
 		if member.Name == m.Name {
 			myGroup.Members = slices.Delete(myGroup.Members, i, i+1)
+		} else {
+			// notify others
+			member.Conn.WriteJSON(makeMessage(
+				MessageSomeoneLeft{m.Name},
+				MSG_SomeoneLeft,
+			))
 		}
 	}
 
@@ -257,6 +264,7 @@ const (
 	MSG_MakeNewKey
 	MSG_NewPeerKeys
 	MSG_Text
+	MSG_SomeoneLeft
 )
 
 type Message struct {
@@ -287,6 +295,10 @@ type MessageNewPeerKeys struct {
 
 type MessageNewKeyRequestResponse struct {
 	SerializedNewKey string `json:"pub"`
+}
+
+type MessageSomeoneLeft struct {
+	Who uuID `json:"who"`
 }
 
 func makeMessage(msg any, typ uint8) Message {
